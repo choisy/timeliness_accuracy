@@ -1,0 +1,30 @@
+[
+  {
+    "objectID": "explorations.html",
+    "href": "explorations.html",
+    "title": "Timeliness and accuracy tradeoff",
+    "section": "",
+    "text": "Packages:\n\nlibrary(dplyr)\nlibrary(stringr)\n\nUtilitary functions:\n\nplot2 <- function(...) plot(..., col = 4, lwd = 3)\n\nplot_age <- function(...) plot2(..., xlab = \"age (year)\")"
+  },
+  {
+    "objectID": "explorations.html#demographic-data",
+    "href": "explorations.html#demographic-data",
+    "title": "Timeliness and accuracy tradeoff",
+    "section": "Demographic data",
+    "text": "Demographic data\nLoading the 2019 census data:\n\ncensus <- readRDS(\"~/OneDrive - Oxford University Clinical Research Unit/data/census VNM 2019/census2019.rds\")\n\nA function that computes age as an integer:\n\nconvert_age <- function(x) {\n  x |> \n    str_remove(\" tuổi\") |> \n    str_remove(\" \\\\+\") |> \n    as.integer()\n}\n\nCreating the data for HCMC:\n\nhcmc <- census |> \n  filter(province == \"Thành phố Hồ Chí Minh\") |> \n  mutate_at(\"age\", convert_age) |> \n  group_by(age) |> \n  summarise(n = sum(n))\n\nLooking at the age distribution in HCMC:\n\nwith(hcmc, plot_age(age, n, type = \"h\", ylab = \"number of people\"))\n\n\n\n\nAge profile of seroprevalence in HCMC:\n\nxs <- seq(0, 81, le = 500)\nys <- 1 - exp(-.07 * xs)\nplot_age(xs, ys, type = \"l\", ylab = \"seroprevalence\")\nabline(h = .5, col = \"lightgrey\")\nabline(v = 10, col = \"lightgrey\")\n\n\n\n\nComputing the number of susceptibles per age class in HCMC:\n\nhcmc <- mutate(hcmc, susc = exp(-.07 * row_number()) * n)\n\nLooking at the age profile of seroprevalence in HCMC:\n\nwith(hcmc, plot_age(age, susc, type = \"h\", ylab = \"number of people\"))\n\n\n\n\nThe total number of susceptibles in HCMC:\n\nhcmc |> \n  pull(susc) |> \n  sum()\n\n[1] 1408015"
+  },
+  {
+    "objectID": "explorations.html#a-deterministic-model",
+    "href": "explorations.html#a-deterministic-model",
+    "title": "Timeliness and accuracy tradeoff",
+    "section": "A deterministic model",
+    "text": "A deterministic model\nAn SIR model:\n\nsir_det <- function(beta, gamma, S0, I0, R0, times) {\n  N <- S0 + I0 + R0\n  sir_equations <- function(time, variables, parameters) {\n    with(as.list(c(variables, parameters)), {\n      I <- N - S - R\n      dS <- -beta * I * S / N\n      dR <-  gamma * I\n      return(list(c(dS, dR)))\n    })\n  }\n  \n  tibble::as_tibble(\n    as.data.frame(\n      deSolve::ode(c(S = S0, R = R0), times, sir_equations,\n                   c(beta  = beta, gamma = gamma))))\n}\n\nA function that computes incidence:\n\nadd_incidence <- function(df, p = 1 / 5) {\n  df |> \n    mutate(incidence = round(-c(diff(S), NA)),\n           reported  = round(p * incidence)) |> \n    filter(row_number() < n())\n}\n\nSimulating an epi-curve in HCMC (with an R\\(_0\\) of 7.25):\n\ntmax <- 365\n\nout <- sir_det(beta = 5, gamma = 1 / 1.45, S0 = 1.5e6, I0 = 1, R0 = 8.5e6, times = seq(0, tmax)) |> \n  add_incidence()\n\nwith(out, plot2(time, reported, type = \"s\",\n                xlab = \"time (day)\", ylab = \"number of reported cases\"))\n\nabline(v = seq(0, tmax, 30), col = \"lightgrey\")\n\n\n\n\nThe total number of reported cases during the outbreak:\n\nout |> \n  pull(reported) |> \n  sum()\n\n[1] 46934"
+  },
+  {
+    "objectID": "explorations.html#a-stochastic-model",
+    "href": "explorations.html#a-stochastic-model",
+    "title": "Timeliness and accuracy tradeoff",
+    "section": "A stochastic model",
+    "text": "A stochastic model\n\nsir_sto <- function(beta, gamma, S0, I0, R0, tf, ...) {\n  transitions <- list(c(S = -1, I = +1),\n                      c(I = -1, R = +1))\n  \n  lvrates <- function(x, params, t) {\n    with(c(x, params), c(beta * S * I / (S + I + R),\n                         gamma * I))\n  }\n  \n  tibble::as_tibble(\n    as.data.frame(\n      adaptivetau::ssa.adaptivetau(c(S = S0, I = I0, R = R0), transitions, lvrates,\n                                   list(beta = beta, gamma = gamma), tf, ...)\n    )\n  )\n}\n\n\nsir_sto(beta = 5, gamma = 1 / 1.45, S0 = 1.5e6, I0 = 1, R0 = 8.5e6, tf = 365) |> \n  with(plot(time, I))"
+  }
+]

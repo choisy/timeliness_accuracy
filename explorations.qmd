@@ -169,8 +169,41 @@ sir_sto <- function(beta, gamma, S0, I0, R0, tf, ...) {
 }
 ```
 
+A wrapper that warranties we have an outbreak:
+
 ```{r}
-sir_sto(beta = 5, gamma = 1 / 1.45, S0 = 1.5e6, I0 = 1, R0 = 8.5e6, tf = 365) |> 
-  with(plot(time, I))
+sir_sto2 <- function(..., thresh = 30) {
+  repeat {
+    out <- sir_sto(...)
+    if (max(out$I) > thresh) break
+  }
+  out
+}
 ```
 
+The function that computes the incidence and reported cases from the stochastic
+model output:
+
+```{r}
+make_incidence <- function(df, p = 1 / 5) {
+  df |> 
+    mutate(t = floor(time),
+           d = -c(0, diff(S))) |> 
+    filter(d > 0) |> 
+    group_by(t) |> 
+    summarise(n = sum(d)) |> 
+    transmute(time      = t,
+              incidence = n,
+              reported  = round(p * incidence))
+}
+```
+
+Let's try it:
+
+```{r}
+out2 <- sir_sto2(beta = 5, gamma = 1 / 1.45, S0 = 1.5e6, I0 = 1, R0 = 8.5e6, tf = 365)
+
+out2 |> 
+  make_incidence() |> 
+  with(plot(time, reported))
+```
